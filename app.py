@@ -11,15 +11,43 @@ def analyze_sms(message_body):
     This is the core logic. It checks an SMS for suspicious keywords.
     Returns a reply message string.
     """
-    scam_pattern = re.compile(
-        r'congratulations|you have won|lottery|prize|urgent|act now|account blocked|verify your pin|share your otp|kyc|bit\.ly',
+    # --- Tier 1: High-priority UPI scam patterns (the most dangerous) ---
+    # Looks for phrases asking for a PIN to RECEIVE money or approving a "collect request".
+    upi_scam_pattern = re.compile(
+        r'enter.*upi pin.*receive money|approve.*request.*receive|payment request.*approve|requested money from you|claim.*cashback.*pin',
         re.IGNORECASE
     )
-    
-    if re.search(scam_pattern, message_body):
-        return "⚠️ WARNING: This message looks like a scam. Do not click any links or share personal information. Stay safe!"
-    else:
-        return "✅ This message appears to be safe. Always be careful with unknown senders."
+
+    # --- Tier 2: High-priority OTP scam patterns ---
+    # Looks for phrases asking you to share a secret code to authorize something.
+    otp_scam_pattern = re.compile(
+        r'share.*otp|share.*one time password|enter.*otp.*authorize|forward this code',
+        re.IGNORECASE
+    )
+
+    # --- Tier 3: General scam patterns ---
+    # Looks for urgency, fake lottery wins, and suspicious links.
+    general_scam_pattern = re.compile(
+        r'congratulations|you have won|lottery|prize|urgent|act now|account blocked|verify your pin|kyc|bit\.ly',
+        re.IGNORECASE
+    )
+
+    # We now check for scams in order of how dangerous they are.
+    if re.search(upi_scam_pattern, message_body):
+        # Provide a very specific UPI warning
+        return "⚠️ UPI SCAM ALERT! Never enter your UPI PIN to receive money. This message is trying to steal from your account. DO NOT APPROVE."
+
+    if re.search(otp_scam_pattern, message_body):
+        # Provide a specific OTP warning
+        return "⚠️ OTP SCAM ALERT! Never share an OTP with anyone. This message is trying to gain access to your account."
+
+    if re.search(general_scam_pattern, message_body):
+        # Provide the general warning for other types of scams
+        return "⚠️ WARNING: This message looks like a scam. Do not click any links or share personal information."
+
+    # If no patterns match, the message is likely safe.
+    return "✅ This message appears to be safe. Always be careful with unknown senders."
+
 
 @app.route("/sms", methods=['POST'])
 def handle_sms():
@@ -28,43 +56,29 @@ def handle_sms():
     It receives the SMS, analyzes it, and returns a JSON reply for the app.
     """
     try:
-        # --- NEW CODE BLOCK STARTS HERE ---
-        # First, check if the request from the phone is correctly formatted as JSON
         if not request.is_json:
             raw_body = request.get_data(as_text=True)
             print(f"Error: Request is not JSON. Raw body received: '{raw_body}'")
-            # Return a specific JSON error to help us debug
             return jsonify({
-                "payload": {
-                    "success": False, 
-                    "error": "Request Content-Type header was not application/json"
-                }
-            }), 400 # 400 is the code for a "Bad Request"
-        # --- NEW CODE BLOCK ENDS HERE ---
+                "payload": { "success": False, "error": "Request Content-Type was not application/json"}
+            }), 400
 
-        # Get the JSON data sent by the SMS Gateway app
         data = request.json
         incoming_msg = data.get('message', '')
         sender_number = data.get('from', '')
         
         print(f"Received message from {sender_number}: '{incoming_msg}'")
         
-        # Analyze the message to get the correct reply
         response_text = analyze_sms(incoming_msg)
         
-        # This JSON structure tells the Android app what SMS to send back
         reply = {
             "payload": {
                 "success": True,
                 "messages": [
-                    {
-                        "to": sender_number,
-                        "message": response_text
-                    }
+                    { "to": sender_number, "message": response_text }
                 ]
             }
         }
-        
         return jsonify(reply)
 
     except Exception as e:
