@@ -11,17 +11,14 @@ def analyze_sms(message_body):
     This is the core logic. It checks an SMS for suspicious keywords.
     Returns a reply message string.
     """
-    # Using 're.IGNORECASE' to make the search case-insensitive
     scam_pattern = re.compile(
         r'congratulations|you have won|lottery|prize|urgent|act now|account blocked|verify your pin|share your otp|kyc|bit\.ly',
         re.IGNORECASE
     )
     
     if re.search(scam_pattern, message_body):
-        # If any keyword is found, create a fraud warning
         return "⚠️ WARNING: This message looks like a scam. Do not click any links or share personal information. Stay safe!"
     else:
-        # Otherwise, the message is likely safe
         return "✅ This message appears to be safe. Always be careful with unknown senders."
 
 @app.route("/sms", methods=['POST'])
@@ -31,6 +28,20 @@ def handle_sms():
     It receives the SMS, analyzes it, and returns a JSON reply for the app.
     """
     try:
+        # --- NEW CODE BLOCK STARTS HERE ---
+        # First, check if the request from the phone is correctly formatted as JSON
+        if not request.is_json:
+            raw_body = request.get_data(as_text=True)
+            print(f"Error: Request is not JSON. Raw body received: '{raw_body}'")
+            # Return a specific JSON error to help us debug
+            return jsonify({
+                "payload": {
+                    "success": False, 
+                    "error": "Request Content-Type header was not application/json"
+                }
+            }), 400 # 400 is the code for a "Bad Request"
+        # --- NEW CODE BLOCK ENDS HERE ---
+
         # Get the JSON data sent by the SMS Gateway app
         data = request.json
         incoming_msg = data.get('message', '')
@@ -57,5 +68,5 @@ def handle_sms():
         return jsonify(reply)
 
     except Exception as e:
-        print(f"An error occurred: {e}")
-        return jsonify({"payload": {"success": False, "error": "Server error"}}), 500
+        print(f"An error occurred in the main block: {e}")
+        return jsonify({"payload": {"success": False, "error": "A server error occurred"}}), 500
